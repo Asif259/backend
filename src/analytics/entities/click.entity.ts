@@ -31,6 +31,15 @@ export class Click {
   @Column({ type: 'text', nullable: true })
   referrer!: string | null;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  device!: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  browser!: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  country!: string | null;
+
   @ManyToOne('Link', (link: Link) => link.clicks, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'link_id' })
   link!: Link;

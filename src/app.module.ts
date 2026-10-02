@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersModule } from './users/users.module.js';
+import { AuthModule } from './auth/auth.module.js';
 import { LinksModule } from './links/links.module.js';
 import { AnalyticsModule } from './analytics/analytics.module.js';
 import { User } from './users/entities/user.entity.js';
@@ -34,6 +35,7 @@ import { Click } from './analytics/entities/click.entity.js';
     }),
 
     UsersModule,
+    AuthModule,
     LinksModule,
     AnalyticsModule,
   ],
