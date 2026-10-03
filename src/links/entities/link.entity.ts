@@ -28,6 +28,24 @@ export class Link {
   @Column({ name: 'original_url', type: 'text' })
   originalUrl!: string;
 
+  /**
+   * Whether this link is currently active.
+   *
+   * When false the redirect endpoint returns 410 Gone instead of redirecting.
+   * This prevents disabled links from functioning while preserving analytics.
+   */
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive!: boolean;
+
+  /**
+   * Optional expiration timestamp.
+   *
+   * When set and in the past, the redirect endpoint returns 410 Gone.
+   * Not enforced at the DB level — enforced in the service layer.
+   */
+  @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
+  expiresAt!: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

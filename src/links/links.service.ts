@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
+import { randomBytes } from 'crypto';
 import { Link } from './entities/link.entity.js';
 import { CreateLinkDto } from './dto/create-link.dto.js';
 import { UpdateLinkDto } from './dto/update-link.dto.js';
@@ -30,15 +31,27 @@ export class LinksService {
     private readonly linkRepository: Repository<Link>,
   ) {}
 
-  /** Generate a random alphanumeric short code (7 chars). */
+  /**
+   * Generate a cryptographically secure 7-character alphanumeric short code.
+   *
+   * Uses crypto.randomBytes instead of Math.random() to ensure codes cannot
+   * be predicted even if an attacker knows the generation time or system state.
+   * The rejection-sampling approach prevents modulo bias.
+   */
   private generateShortCode(): string {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const LENGTH = 7;
     let code = '';
-    for (let i = 0; i < 7; i++) {
-      code += chars[Math.floor(Math.random() * chars.length)];
+    while (code.length < LENGTH) {
+      const byte = randomBytes(1)[0];
+      // Rejection sampling: discard values that would cause modulo bias
+      if (byte !== undefined && byte < 256 - (256 % chars.length)) {
+        code += chars[byte % chars.length];
+      }
     }
     return code;
   }
+
 
   async create(userId: string, dto: CreateLinkDto): Promise<LinkWithClickCount> {
     let shortCode = dto.shortCode;
@@ -65,7 +78,7 @@ export class LinksService {
     });
 
     const saved = await this.linkRepository.save(link);
-    return this.toResponse(saved, 0, 'active');
+    return this.toResponse(saved, 0);
   }
 
   async findAllByUser(userId: string, params: GetLinksParams = {}): Promise<LinkWithClickCount[]> {
@@ -108,7 +121,7 @@ export class LinksService {
 
     return raw.entities.map((link, idx) => {
       const count = Number(raw.raw[idx]?.clickCount ?? 0);
-      return this.toResponse(link, count, 'active');
+      return this.toResponse(link, count);
     });
   }
 
@@ -126,7 +139,7 @@ export class LinksService {
     if (!link) throw new NotFoundException('Link not found');
     if (link.userId !== userId) throw new ForbiddenException('Access denied');
 
-    return this.toResponse(link, Number(raw[0]?.clickCount ?? 0), 'active');
+    return this.toResponse(link, Number(raw[0]?.clickCount ?? 0));
   }
 
   async findByShortCode(shortCode: string): Promise<Link | null> {
@@ -156,7 +169,7 @@ export class LinksService {
       .groupBy('link.id')
       .getRawOne<{ clickCount: number }>();
 
-    return this.toResponse(saved, Number(count?.clickCount ?? 0), dto.status ?? 'active');
+    return this.toResponse(saved, Number(count?.clickCount ?? 0));
   }
 
   async remove(id: string, userId: string): Promise<{ success: boolean }> {
@@ -168,7 +181,36 @@ export class LinksService {
     return { success: true };
   }
 
-  private toResponse(link: Link, clickCount: number, status: 'active' | 'disabled'): LinkWithClickCount {
-    return { ...link, clickCount, status };
+  /**
+   * Enable or disable a link.
+   *
+   * Ownership is verified before any mutation.
+   * Returns the updated link so the frontend can update its local state.
+   */
+  async setActive(id: string, userId: string, isActive: boolean): Promise<LinkWithClickCount> {
+    const link = await this.linkRepository.findOne({ where: { id } });
+    if (!link) throw new NotFoundException('Link not found');
+    if (link.userId !== userId) throw new ForbiddenException('Access denied');
+
+    link.isActive = isActive;
+    const saved = await this.linkRepository.save(link);
+
+    const count = await this.linkRepository
+      .createQueryBuilder('link')
+      .leftJoin('link.clicks', 'click')
+      .addSelect('COUNT(click.id)::int', 'clickCount')
+      .where('link.id = :id', { id })
+      .groupBy('link.id')
+      .getRawOne<{ clickCount: number }>();
+
+    return this.toResponse(saved, Number(count?.clickCount ?? 0));
+  }
+
+  private toResponse(link: Link, clickCount: number): LinkWithClickCount {
+    return {
+      ...link,
+      clickCount,
+      status: link.isActive ? 'active' : 'disabled',
+    };
   }
 }

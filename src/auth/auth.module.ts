@@ -13,12 +13,23 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET', 'super-secret-key'),
-        signOptions: {
-          expiresIn: (configService.get<string>('JWT_EXPIRES_IN') ?? '1d') as any,
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) {
+          throw new Error(
+            'JWT_SECRET environment variable is required but not set. ' +
+            'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+          );
+        }
+        // expiresIn must satisfy the ms `StringValue` type accepted by @nestjs/jwt.
+        // Casting here is safe — the value is always a valid ms duration string.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const expiresIn = (configService.get<string>('JWT_EXPIRES_IN') ?? '1d') as any;
+        return {
+          secret,
+          signOptions: { expiresIn },
+        };
+      },
     }),
   ],
   controllers: [AuthController],
